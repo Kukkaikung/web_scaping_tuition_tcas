@@ -1,0 +1,22 @@
+# ไฟล์และโฟลเดอร์สำหรับ Python
+
+# virtual environment
+venv_minipro/
+
+# ไฟล์ cache ของ Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# ไฟล์บันทึกการทำงานของ Python
+*.log
+
+# ไฟล์ที่สร้างโดย IDE เช่น VS Code
+.vscode/
+
+# ไฟล์ระบบปฏิบัติการ (Windows, macOS)
+.DS_Store
+Thumbs.db
+
+# ไฟล์ Jupyter Notebook checkpoints
+.ipynb_checkpoints/
