@@ -3,7 +3,7 @@ from dash import Dash, html, dcc, dash_table, Input, Output
 import plotly.express as px
 
 # โหลดข้อมูล
-df = pd.read_csv("filtered_tcas_cleaned.csv")
+df = pd.read_csv("final_filtered_tcas_cleaned.csv")
 df['ค่าใช้จ่าย'] = df['ค่าใช้จ่าย'].astype(str).str.replace(',', '').astype(float)
 
 uni_options = [{'label': uni, 'value': uni} for uni in sorted(df['มหาวิทยาลัย'].unique())]
@@ -16,6 +16,13 @@ table_columns = [
     {"name": "มหาวิทยาลัย", "id": "มหาวิทยาลัย"},
     {"name": "ชื่อหลักสูตร", "id": "ชื่อหลักสูตร"},
     {"name": "ค่าใช้จ่าย (บาท/เทอม)", "id": "ค่าใช้จ่าย"},
+]
+
+# สี pastel สำหรับ pie chart
+pastel_colors = [
+    '#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF',
+    '#E1BAFF', '#FFBAE1', '#FFC9BA', '#C9FFBA', '#BAD1FF',
+    '#D1BAFF', '#FFBAFF', '#BAFFE1', '#E1FFBA', '#FFD1BA'
 ]
 
 app = Dash(__name__)
@@ -50,6 +57,9 @@ app.layout = html.Div([
     ], style={'width': '80%', 'margin': 'auto'}),
 
     html.Br(),
+
+    # เพิ่มส่วนแสดงสถิติ
+    html.Div(id='stats-cards', style={'textAlign': 'center', 'margin': '20px'}),
 
     html.H2("ตารางหลักสูตร", style={'textAlign': 'center'}),
     dash_table.DataTable(
@@ -103,24 +113,58 @@ def update_table(selected_unis, price_range, page_current, page_size):
     page_data = filtered_df.iloc[start:end].to_dict('records')
     return page_data
 
-# Callback อัปเดตกราฟ Bar, Line, Pie ตามข้อมูลในหน้าตารางที่แสดง
+# Callback อัปเดตสถิติและกราฟ
 @app.callback(
+    Output('stats-cards', 'children'),
     Output('bar-chart', 'figure'),
     Output('line-chart', 'figure'),
     Output('pie-chart', 'figure'),
     Input('course-table', 'data')
 )
-def update_charts(table_data):
+def update_charts_and_stats(table_data):
     if not table_data:
         no_data_fig = px.bar(title="ไม่มีข้อมูลในหน้านี้")
-        return no_data_fig, no_data_fig, no_data_fig
+        no_stats = html.Div("ไม่มีข้อมูลในหน้านี้")
+        return no_stats, no_data_fig, no_data_fig, no_data_fig
 
     page_df = pd.DataFrame(table_data)
+    
+    # คำนวณสถิติ
+    max_price = page_df['ค่าใช้จ่าย'].max()
+    min_price = page_df['ค่าใช้จ่าย'].min()
+    mean_price = page_df['ค่าใช้จ่าย'].mean()
+    
+    # สร้าง stats cards
+    stats_cards = html.Div([
+        html.Div([
+            html.H3(f"{max_price:,.0f}", style={'color': '#e74c3c', 'margin': '0'}),
+            html.P("ค่าเทอมสูงสุด (บาท)", style={'margin': '0', 'fontSize': '14px'})
+        ], style={
+            'backgroundColor': '#ffe6e6', 'padding': '15px', 'borderRadius': '10px',
+            'textAlign': 'center', 'margin': '0 10px', 'minWidth': '150px'
+        }),
+        
+        html.Div([
+            html.H3(f"{min_price:,.0f}", style={'color': '#27ae60', 'margin': '0'}),
+            html.P("ค่าเทอมต่ำสุด (บาท)", style={'margin': '0', 'fontSize': '14px'})
+        ], style={
+            'backgroundColor': '#e6ffe6', 'padding': '15px', 'borderRadius': '10px',
+            'textAlign': 'center', 'margin': '0 10px', 'minWidth': '150px'
+        }),
+        
+        html.Div([
+            html.H3(f"{mean_price:,.0f}", style={'color': '#3498db', 'margin': '0'}),
+            html.P("ค่าเทอมเฉลี่ย (บาท)", style={'margin': '0', 'fontSize': '14px'})
+        ], style={
+            'backgroundColor': '#e6f3ff', 'padding': '15px', 'borderRadius': '10px',
+            'textAlign': 'center', 'margin': '0 10px', 'minWidth': '150px'
+        })
+    ], style={'display': 'flex', 'justifyContent': 'center', 'flexWrap': 'wrap'})
 
     # Bar chart
     bar_fig = px.bar(
         page_df,
-        x='ชื่อหลักสูตร',
+        x='มหาวิทยาลัย_หลักสูตร',
         y='ค่าใช้จ่าย',
         color='มหาวิทยาลัย',
         labels={"ค่าใช้จ่าย": "ค่าเทอม (บาท/เทอม)", "ชื่อหลักสูตร": "หลักสูตร"},
@@ -130,13 +174,13 @@ def update_charts(table_data):
         xaxis_tickangle=45,
         xaxis={
             'categoryorder': 'total descending',
-            'showticklabels': False  # ซ่อน x-axis labels
+            'showticklabels': False
         },
         height=500,
-        margin=dict(t=50, b=50),  # ลด bottom margin เพราะไม่มี labels แล้ว
+        margin=dict(t=50, b=50),
     )
 
-    # Line chart (ค่าเทอมเฉลี่ยรายมหาวิทยาลัย)
+    # Line chart
     line_data = page_df.groupby('มหาวิทยาลัย')['ค่าใช้จ่าย'].mean().reset_index()
     line_fig = px.line(
         line_data,
@@ -152,17 +196,24 @@ def update_charts(table_data):
         margin=dict(t=50, b=150),
     )
 
-    # Pie chart (สัดส่วนจำนวนหลักสูตรในแต่ละมหาวิทยาลัย)
+    # Pie chart with pastel colors
     pie_data = page_df['มหาวิทยาลัย'].value_counts().reset_index()
     pie_data.columns = ['มหาวิทยาลัย', 'จำนวนหลักสูตร']
     pie_fig = px.pie(
         pie_data,
         values='จำนวนหลักสูตร',
         names='มหาวิทยาลัย',
-        title="สัดส่วนจำนวนหลักสูตรในแต่ละมหาวิทยาลัยในหน้านี้"
+        title="สัดส่วนจำนวนหลักสูตรในแต่ละมหาวิทยาลัยในหน้านี้",
+        color_discrete_sequence=pastel_colors
+    )
+    pie_fig.update_traces(
+        textposition='inside', 
+        textinfo='percent+label',
+        textfont_size=12,
+        insidetextorientation='radial'  # ข้อความแนวตามรัศมี
     )
 
-    return bar_fig, line_fig, pie_fig
+    return stats_cards, bar_fig, line_fig, pie_fig
 
 
 if __name__ == '__main__':
