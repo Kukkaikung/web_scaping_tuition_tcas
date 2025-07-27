@@ -8,7 +8,7 @@ import re
 async def scrape_tcas():
     keywords = ["วิศวกรรมคอมพิวเตอร์"]
     all_results = []
-    all_fields = set()
+    all_fields = set(["มหาวิทยาลัย"])  # เพิ่ม column มหาวิทยาลัยไว้ล่วงหน้า
 
     os.makedirs("debug_html", exist_ok=True)
 
@@ -22,8 +22,10 @@ async def scrape_tcas():
             await page.fill("#search", keyword)
             await page.keyboard.press("Enter")
 
+            await page.wait_for_timeout(3000)  # รอให้หน้าโหลดผลลัพธ์
+
             try:
-                await page.wait_for_selector("#results.t-result.active ul.t-programs", timeout=15000)
+                await page.wait_for_selector("ul.t-programs li a", timeout=10000)
             except:
                 print(f"❌ ไม่พบผลลัพธ์สำหรับคำค้นหา: {keyword}")
                 continue
@@ -37,8 +39,9 @@ async def scrape_tcas():
                 detail_page = await browser.new_page()
                 try:
                     await detail_page.goto(link, wait_until="networkidle")
-                    await detail_page.wait_for_selector("main.site-body", timeout=15000)
+                    await detail_page.wait_for_timeout(1000)
 
+                    # คลิกแท็บ Overview หากยังไม่ active
                     tab_overview = await detail_page.query_selector('a.r0[href="#overview"]')
                     if tab_overview:
                         class_attr = await tab_overview.get_attribute("class") or ""
@@ -47,16 +50,23 @@ async def scrape_tcas():
                             await detail_page.wait_for_timeout(1000)
 
                     content = await detail_page.content()
-                    filename = f"debug_html/{keyword.replace(' ','_')}_{idx}.html"
+
+                    # บันทึก HTML ไว้ดูภายหลัง (debug)
+                    filename = f"debug_html/{keyword.replace(' ', '_')}_{idx}.html"
                     with open(filename, "w", encoding="utf-8") as f:
                         f.write(content)
 
                     soup = BeautifulSoup(content, "html.parser")
+                    result_dict = {}
 
                     main_site_body = soup.select_one("main.site-body")
-                    result_dict = {"คำค้นหา": keyword, "URL": link, "ชื่อหลักสูตร": ""}
-
                     if main_site_body:
+                        # ✅ ดึงชื่อมหาวิทยาลัย
+                        a_uni = main_site_body.select_one("span.h-brand a")
+                        if a_uni:
+                            result_dict["มหาวิทยาลัย"] = a_uni.get_text(strip=True)
+
+                        # ✅ ดึงข้อมูล dt/dd
                         div_t_box = main_site_body.select_one("div.t-box")
                         if div_t_box:
                             ul_body = div_t_box.select_one("ul.body.t-program")
@@ -68,31 +78,21 @@ async def scrape_tcas():
                                     for dt, dd in zip(dts, dds):
                                         key = dt.get_text(strip=True)
                                         value = dd.get_text(strip=True)
-                                        if re.search(r"\d", value):  # มีตัวเลข
-                                            result_dict[key] = value
-                                            all_fields.add(key)
+                                        result_dict[key] = value
+                                        all_fields.add(key)
 
-                        title_el = main_site_body.select_one("h2")
-                        if title_el:
-                            result_dict["ชื่อหลักสูตร"] = title_el.get_text(strip=True)
-
-                    all_results.append(result_dict)
+                    if result_dict:
+                        all_results.append(result_dict)
 
                 except Exception as e:
-                    print(f"{keyword} → {link} → ❌ Error: {e}")
-                    all_results.append({
-                        "คำค้นหา": keyword,
-                        "URL": link,
-                        "ชื่อหลักสูตร": "Error",
-                        "สถานะ": "Error เก็บข้อมูลไม่ได้"
-                    })
+                    print(f"❌ Error with link: {link} → {e}")
 
                 await detail_page.close()
 
         await browser.close()
 
-    # บันทึกผลลัพธ์ลง CSV
-    fieldnames = ["คำค้นหา", "URL", "ชื่อหลักสูตร"] + sorted(all_fields)
+    # ✅ สร้าง CSV
+    fieldnames = ["มหาวิทยาลัย"] + sorted(f for f in all_fields if f != "มหาวิทยาลัย")
     with open("tcas_programs.csv", "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
