@@ -2,23 +2,29 @@ import pandas as pd
 from dash import Dash, html, dcc, dash_table, Input, Output
 import plotly.express as px
 
+# โหลดข้อมูล
 df = pd.read_csv("filtered_tcas_cleaned.csv")
 
+# ตัวเลือกมหาวิทยาลัย
 uni_options = [{'label': uni, 'value': uni} for uni in sorted(df['มหาวิทยาลัย'].unique())]
 
+# ขอบเขตราคา
 min_price = int(df['ค่าใช้จ่าย'].min())
 max_price = int(df['ค่าใช้จ่าย'].max())
 price_marks = {i: f'{i}' for i in range(min_price, max_price+1, max(1000, (max_price-min_price)//10))}
 
+# คอลัมน์ตาราง
 table_columns = [
     {"name": "มหาวิทยาลัย", "id": "มหาวิทยาลัย"},
     {"name": "ชื่อหลักสูตร", "id": "ชื่อหลักสูตร"},
     {"name": "ค่าใช้จ่าย (บาท/เทอม)", "id": "ค่าใช้จ่าย"},
 ]
 
+# สร้างแอป Dash
 app = Dash(__name__)
 app.title = "Dashboard ค่าเทอมหลักสูตร TCAS"
 
+# Layout
 app.layout = html.Div([
     html.H1("📚 Dashboard ค่าเทอมหลักสูตร TCAS", style={'textAlign': 'center'}),
 
@@ -44,6 +50,19 @@ app.layout = html.Div([
             marks=price_marks,
             value=[min_price, max_price],
             tooltip={"placement": "bottom", "always_visible": True}
+        )
+    ], style={'width': '80%', 'margin': 'auto'}),
+
+    html.Br(),
+
+    html.Div([
+        html.Label("เลือกหลักสูตรที่ต้องการดูกราฟ (สูงสุด 5 หลักสูตร):", style={'fontWeight': 'bold'}),
+        dcc.Dropdown(
+            id='course-dropdown',
+            multi=True,
+            placeholder="เลือกหลักสูตร...",
+            options=[],  # จะอัปเดตใน callback
+            maxHeight=300
         )
     ], style={'width': '80%', 'margin': 'auto'}),
 
@@ -75,16 +94,35 @@ app.layout = html.Div([
     dcc.Graph(id='pie-chart'),
 ])
 
+# Callback: อัปเดตรายชื่อหลักสูตรใน Dropdown
+@app.callback(
+    Output('course-dropdown', 'options'),
+    Output('course-dropdown', 'value'),
+    Input('uni-dropdown', 'value'),
+    Input('price-slider', 'value')
+)
+def update_course_dropdown(selected_unis, price_range):
+    filtered_df = df.copy()
+    if selected_unis and len(selected_unis) > 0:
+        filtered_df = filtered_df[filtered_df['มหาวิทยาลัย'].isin(selected_unis)]
+    filtered_df = filtered_df[
+        (filtered_df['ค่าใช้จ่าย'] >= price_range[0]) &
+        (filtered_df['ค่าใช้จ่าย'] <= price_range[1])
+    ]
+    course_options = [{'label': c, 'value': c} for c in sorted(filtered_df['ชื่อหลักสูตร'].unique())]
+    return course_options, [c['value'] for c in course_options[:5]]
 
+# Callback หลัก: อัปเดตตารางและกราฟ
 @app.callback(
     Output('course-table', 'data'),
     Output('bar-chart', 'figure'),
     Output('box-plot', 'figure'),
     Output('pie-chart', 'figure'),
     Input('uni-dropdown', 'value'),
-    Input('price-slider', 'value')
+    Input('price-slider', 'value'),
+    Input('course-dropdown', 'value')
 )
-def update_dashboard(selected_unis, price_range):
+def update_dashboard(selected_unis, price_range, selected_courses):
     filtered_df = df.copy()
     if selected_unis and len(selected_unis) > 0:
         filtered_df = filtered_df[filtered_df['มหาวิทยาลัย'].isin(selected_unis)]
@@ -94,42 +132,62 @@ def update_dashboard(selected_unis, price_range):
         (filtered_df['ค่าใช้จ่าย'] <= price_range[1])
     ]
 
-    # Bar chart
     if filtered_df.empty:
         bar_fig = px.bar(title="ไม่มีข้อมูลในช่วงที่เลือก")
         box_fig = px.box(title="ไม่มีข้อมูลในช่วงที่เลือก")
         pie_fig = px.pie(title="ไม่มีข้อมูลในช่วงที่เลือก")
+        return [], bar_fig, box_fig, pie_fig
+
+    # กรองเฉพาะหลักสูตรที่เลือกสำหรับ bar chart
+    if selected_courses and len(selected_courses) > 0:
+        bar_df = filtered_df[filtered_df['ชื่อหลักสูตร'].isin(selected_courses)]
     else:
-        bar_fig = px.bar(
-            filtered_df, 
-            x="ชื่อหลักสูตร", 
-            y="ค่าใช้จ่าย", 
-            color="มหาวิทยาลัย",
-            labels={"ค่าใช้จ่าย": "ค่าเทอม (บาท/เทอม)", "ชื่อหลักสูตร": "หลักสูตร"},
-            title="ค่าเทอมรายหลักสูตรตามเงื่อนไขการกรอง",
-        )
-        bar_fig.update_layout(xaxis_tickangle=45, xaxis={'categoryorder':'total descending'})
+        bar_df = filtered_df.copy()
 
-        box_fig = px.box(
-            filtered_df, 
-            x="มหาวิทยาลัย", 
-            y="ค่าใช้จ่าย", 
-            points="all",
-            labels={"ค่าใช้จ่าย": "ค่าเทอม (บาท/เทอม)", "มหาวิทยาลัย": "มหาวิทยาลัย"},
-            title="การกระจายตัวของค่าเทอมแต่ละมหาวิทยาลัย"
-        )
+    # Bar Chart
+    bar_fig = px.bar(
+        bar_df,
+        x="ชื่อหลักสูตร",
+        y="ค่าใช้จ่าย",
+        color="มหาวิทยาลัย",
+        labels={"ค่าใช้จ่าย": "ค่าเทอม (บาท/เทอม)", "ชื่อหลักสูตร": "หลักสูตร"},
+        title="ค่าเทอมรายหลักสูตรตามเงื่อนไขการกรอง",
+    )
+    bar_fig.update_layout(
+        xaxis_tickangle=45,
+        xaxis={'categoryorder': 'total descending'},
+        height=500,
+        margin=dict(t=50, b=150),
+    )
+    # bar_fig.update_xaxes(
+    #     rangeslider_visible=True,
+    #     tickmode='linear',
+    #     tick0=0,
+    #     dtick=1
+    # )
 
-        pie_data = filtered_df['มหาวิทยาลัย'].value_counts().reset_index()
-        pie_data.columns = ['มหาวิทยาลัย', 'จำนวนหลักสูตร']
-        pie_fig = px.pie(
-            pie_data, 
-            values='จำนวนหลักสูตร', 
-            names='มหาวิทยาลัย',
-            title="สัดส่วนจำนวนหลักสูตรในแต่ละมหาวิทยาลัย"
-        )
+    # Box Plot
+    box_fig = px.box(
+        filtered_df,
+        x="มหาวิทยาลัย",
+        y="ค่าใช้จ่าย",
+        points="all",
+        labels={"ค่าใช้จ่าย": "ค่าเทอม (บาท/เทอม)", "มหาวิทยาลัย": "มหาวิทยาลัย"},
+        title="การกระจายตัวของค่าเทอมแต่ละมหาวิทยาลัย"
+    )
+
+    # Pie Chart
+    pie_data = filtered_df['มหาวิทยาลัย'].value_counts().reset_index()
+    pie_data.columns = ['มหาวิทยาลัย', 'จำนวนหลักสูตร']
+    pie_fig = px.pie(
+        pie_data,
+        values='จำนวนหลักสูตร',
+        names='มหาวิทยาลัย',
+        title="สัดส่วนจำนวนหลักสูตรในแต่ละมหาวิทยาลัย"
+    )
 
     return filtered_df.to_dict('records'), bar_fig, box_fig, pie_fig
 
-
+# Run app
 if __name__ == '__main__':
     app.run(debug=True)
