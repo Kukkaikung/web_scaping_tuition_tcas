@@ -4,6 +4,7 @@ import plotly.express as px
 
 # โหลดข้อมูล
 df = pd.read_csv("filtered_tcas_cleaned.csv")
+df['ค่าใช้จ่าย'] = df['ค่าใช้จ่าย'].astype(str).str.replace(',', '').astype(float)
 
 # ตัวเลือกมหาวิทยาลัย
 uni_options = [{'label': uni, 'value': uni} for uni in sorted(df['มหาวิทยาลัย'].unique())]
@@ -26,7 +27,7 @@ app.title = "Dashboard ค่าเทอมหลักสูตร TCAS"
 
 # Layout
 app.layout = html.Div([
-    html.H1("📚 Dashboard ค่าเทอมหลักสูตร TCAS", style={'textAlign': 'center'}),
+    html.H1("\ud83d\udcda Dashboard ค่าเทอมหลักสูตร TCAS", style={'textAlign': 'center'}),
 
     html.Div([
         html.Label("เลือกมหาวิทยาลัย:", style={'fontWeight': 'bold'}),
@@ -61,10 +62,19 @@ app.layout = html.Div([
             id='course-dropdown',
             multi=True,
             placeholder="เลือกหลักสูตร...",
-            options=[],  # จะอัปเดตใน callback
+            options=[],
             maxHeight=300
         )
     ], style={'width': '80%', 'margin': 'auto'}),
+
+    html.Br(),
+
+    html.Div(id='stats-cards', style={
+        "display": "flex",
+        "justifyContent": "center",
+        "gap": "20px",
+        "flexWrap": "wrap"
+    }),
 
     html.Br(),
 
@@ -112,12 +122,13 @@ def update_course_dropdown(selected_unis, price_range):
     course_options = [{'label': c, 'value': c} for c in sorted(filtered_df['ชื่อหลักสูตร'].unique())]
     return course_options, [c['value'] for c in course_options[:5]]
 
-# Callback หลัก: อัปเดตตารางและกราฟ
+# Callback หลัก: อัปเดตตาราง กราฟ และการ์ดสถิติ
 @app.callback(
     Output('course-table', 'data'),
     Output('bar-chart', 'figure'),
     Output('box-plot', 'figure'),
     Output('pie-chart', 'figure'),
+    Output('stats-cards', 'children'),
     Input('uni-dropdown', 'value'),
     Input('price-slider', 'value'),
     Input('course-dropdown', 'value')
@@ -136,13 +147,10 @@ def update_dashboard(selected_unis, price_range, selected_courses):
         bar_fig = px.bar(title="ไม่มีข้อมูลในช่วงที่เลือก")
         box_fig = px.box(title="ไม่มีข้อมูลในช่วงที่เลือก")
         pie_fig = px.pie(title="ไม่มีข้อมูลในช่วงที่เลือก")
-        return [], bar_fig, box_fig, pie_fig
+        return [], bar_fig, box_fig, pie_fig, []
 
     # กรองเฉพาะหลักสูตรที่เลือกสำหรับ bar chart
-    if selected_courses and len(selected_courses) > 0:
-        bar_df = filtered_df[filtered_df['ชื่อหลักสูตร'].isin(selected_courses)]
-    else:
-        bar_df = filtered_df.copy()
+    bar_df = filtered_df[filtered_df['ชื่อหลักสูตร'].isin(selected_courses)] if selected_courses else filtered_df.copy()
 
     # Bar Chart
     bar_fig = px.bar(
@@ -159,12 +167,6 @@ def update_dashboard(selected_unis, price_range, selected_courses):
         height=500,
         margin=dict(t=50, b=150),
     )
-    # bar_fig.update_xaxes(
-    #     rangeslider_visible=True,
-    #     tickmode='linear',
-    #     tick0=0,
-    #     dtick=1
-    # )
 
     # Box Plot
     box_fig = px.box(
@@ -186,7 +188,29 @@ def update_dashboard(selected_unis, price_range, selected_courses):
         title="สัดส่วนจำนวนหลักสูตรในแต่ละมหาวิทยาลัย"
     )
 
-    return filtered_df.to_dict('records'), bar_fig, box_fig, pie_fig
+    # สถิติการ์ด
+    max_cost = filtered_df['ค่าใช้จ่าย'].max()
+    min_cost = filtered_df['ค่าใช้จ่าย'].min()
+    avg_cost = filtered_df['ค่าใช้จ่าย'].mean()
+
+    stats_cards = [
+        html.Div([
+            html.Div("Max", style={"fontWeight": "bold", "color": "white"}),
+            html.Div(f"{max_cost:,.0f} บาท", style={"fontSize": "20px", "color": "white"})
+        ], style={"backgroundColor": "#003f5c", "padding": "15px", "borderRadius": "10px", "textAlign": "center"}),
+
+        html.Div([
+            html.Div("Min", style={"fontWeight": "bold", "color": "white"}),
+            html.Div(f"{min_cost:,.0f} บาท", style={"fontSize": "20px", "color": "white"})
+        ], style={"backgroundColor": "#bc5090", "padding": "15px", "borderRadius": "10px", "textAlign": "center"}),
+
+        html.Div([
+            html.Div("Average", style={"fontWeight": "bold", "color": "white"}),
+            html.Div(f"{avg_cost:,.0f} บาท", style={"fontSize": "20px", "color": "white"})
+        ], style={"backgroundColor": "#ffa600", "padding": "15px", "borderRadius": "10px", "textAlign": "center"})
+    ]
+
+    return filtered_df.to_dict('records'), bar_fig, box_fig, pie_fig, stats_cards
 
 # Run app
 if __name__ == '__main__':
