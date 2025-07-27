@@ -10,10 +10,10 @@ new_df = df[selected_columns].copy()
 # แปลงค่าใช้จ่ายให้เป็นตัวเลข (ลบ , และแปลงเป็น float)
 new_df['ค่าใช้จ่าย'] = (
     new_df['ค่าใช้จ่าย']
-    .astype(str)                          # แปลงให้เป็น str ก่อน
-    .str.replace(',', '', regex=False)   # ลบ comma
-    .str.extract(r'(\d+(?:\.\d+)?)')     # ดึงเฉพาะตัวเลข (รวมทศนิยมถ้ามี)
-    .astype(float)                       # แปลงเป็น float
+    .astype(str)
+    .str.replace(',', '', regex=False)
+    .str.extract(r'(\d+(?:\.\d+)?)')
+    .astype(float)
 )
 
 # หากค่าใช้จ่าย > 90000 ให้หาร 8
@@ -21,6 +21,9 @@ new_df.loc[new_df['ค่าใช้จ่าย'] > 90000, 'ค่าใช้
 
 # ปัดเศษและแปลงเป็น Int64 (รองรับ NaN)
 new_df['ค่าใช้จ่าย'] = new_df['ค่าใช้จ่าย'].round().astype('Int64')
+
+# รวมคอลัมน์มหาวิทยาลัยกับชื่อหลักสูตร
+new_df['มหาวิทยาลัย_หลักสูตร'] = new_df['มหาวิทยาลัย'] + " " + new_df['ชื่อหลักสูตร']
 
 # บันทึกไฟล์ใหม่
 new_df.to_csv("final_filtered_tcas_cleaned.csv", index=False, encoding='utf-8-sig')
