@@ -214,7 +214,7 @@ def update_charts_and_stats(table_data, price_range):
     )
     # ปรับแต่ง layout
     line_fig.update_layout(
-        height=500,
+        height=350,
         margin=dict(t=50, b=100),
         xaxis=dict(
             title="ลำดับในตาราง",
@@ -224,13 +224,16 @@ def update_charts_and_stats(table_data, price_range):
         )
     )
 
-    # เพิ่มสีให้แต่ละจุดตามมหาวิทยาลัย (ถ้าต้องการ)
+    # ปรับสีให้แต่ละจุดต่างสีกัน
+    colors = px.colors.qualitative.Dark24 + px.colors.qualitative.Pastel + px.colors.qualitative.Set1
     line_fig.update_traces(
-        line=dict(color='blue', width=2),
-        marker=dict(size=8, color='red')
+        line=dict(color='blue', width=2),  # เส้นเป็นสีเทาอ่อน
+        marker=dict(
+            size=8, 
+            color=[colors[i % len(colors)] for i in range(len(page_df))],  # สีต่างกันแต่ละจุด
+            line=dict(width=2, color='white')  # ขอบสีขาว
+        )
     )
-
-    # Pie chart with same colors as bar chart
     pie_data = page_df['มหาวิทยาลัย'].value_counts().reset_index()
     pie_data.columns = ['มหาวิทยาลัย', 'จำนวนหลักสูตร']
     pie_fig = px.pie(
@@ -238,13 +241,17 @@ def update_charts_and_stats(table_data, price_range):
         values='จำนวนหลักสูตร',
         names='มหาวิทยาลัย',
         title="สัดส่วนจำนวนหลักสูตรในแต่ละมหาวิทยาลัยในหน้านี้"
-        # ลบ color_discrete_sequence เพื่อใช้สีเดียวกับ bar chart
     )
     pie_fig.update_traces(
         textposition='inside', 
         textinfo='percent+label',
-        textfont_size=12,
-        insidetextorientation='radial'  # ข้อความแนวตามรัศมี
+        textfont_size=14,  # เพิ่มขนาดฟอนต์
+        insidetextorientation='radial'
+    )
+    pie_fig.update_layout(
+        height=600,  # เพิ่มความสูงให้ใหญ่ขึ้น
+        margin=dict(t=80, b=50, l=50, r=50),
+        font=dict(size=14)  # เพิ่มขนาดฟอนต์ทั้งหมด
     )
 
     return stats_cards, bar_fig, top5_fig, line_fig, pie_fig
