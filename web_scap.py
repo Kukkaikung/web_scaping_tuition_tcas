@@ -6,7 +6,7 @@ import os
 import re
 
 async def scrape_tcas():
-    keywords = ["วิศวกรรมคอมพิวเตอร์"]
+    keywords = ["วิศวกรรมคอมพิวเตอร์", "AI", "วิศวกรรมปัญญาประดิษฐ์"]
     all_results = []
     all_fields = set(["มหาวิทยาลัย"])  # เพิ่ม column มหาวิทยาลัยไว้ล่วงหน้า
 
