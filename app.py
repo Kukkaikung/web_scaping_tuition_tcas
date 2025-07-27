@@ -6,8 +6,6 @@ import plotly.express as px
 df = pd.read_csv("final_filtered_tcas_cleaned.csv")
 df['ค่าใช้จ่าย'] = df['ค่าใช้จ่าย'].astype(str).str.replace(',', '').astype(float)
 
-uni_options = [{'label': uni, 'value': uni} for uni in sorted(df['มหาวิทยาลัย'].unique())]
-
 min_price = int(df['ค่าใช้จ่าย'].min())
 max_price = int(df['ค่าใช้จ่าย'].max())
 price_marks = {i: f'{i}' for i in range(min_price, max_price+1, max(1000, (max_price-min_price)//10))}
@@ -32,18 +30,6 @@ app.layout = html.Div([
     html.H1("📚 Dashboard ค่าเทอมหลักสูตร TCAS", style={'textAlign': 'center'}),
 
     html.Div([
-        html.Label("เลือกมหาวิทยาลัย:", style={'fontWeight': 'bold'}),
-        dcc.Dropdown(
-            id='uni-dropdown',
-            options=uni_options,
-            multi=True,
-            placeholder="เลือกมหาวิทยาลัย (ถ้าว่างจะแสดงทั้งหมด)"
-        )
-    ], style={'width': '50%', 'margin': 'auto'}),
-
-    html.Br(),
-
-    html.Div([
         html.Label("ช่วงราคาค่าเทอม (บาท/เทอม):", style={'fontWeight': 'bold'}),
         dcc.RangeSlider(
             id='price-slider',
@@ -66,7 +52,7 @@ app.layout = html.Div([
         id='course-table',
         columns=table_columns,
         data=df.to_dict('records'),
-        page_size=10,
+        page_size=5,
         page_current=0,
         style_table={'overflowX': 'auto'},
         style_cell={'textAlign': 'left', 'padding': '5px'},
@@ -81,8 +67,18 @@ app.layout = html.Div([
 
     html.Br(),
 
-    html.H2("กราฟเปรียบเทียบค่าเทอมรายหลักสูตร (ตามหน้าตาราง)", style={'textAlign': 'center'}),
-    dcc.Graph(id='bar-chart'),
+    html.H2("กราหเปรียบเทียบค่าเทอมรายหลักสูตร", style={'textAlign': 'center'}),
+    html.Div([
+        html.Div([
+            html.H3("ตามหน้าตาราง", style={'textAlign': 'center', 'fontSize': '16px'}),
+            dcc.Graph(id='bar-chart')
+        ], style={'width': '48%', 'display': 'inline-block'}),
+        
+        html.Div([
+            html.H3("Top 5 ค่าเทอมสูงสุด (ทั้งหมด)", style={'textAlign': 'center', 'fontSize': '16px'}),
+            dcc.Graph(id='top5-chart')
+        ], style={'width': '48%', 'float': 'right', 'display': 'inline-block'})
+    ]),
 
     html.H2("Line Plot: ค่าเทอมเฉลี่ยรายมหาวิทยาลัย (ตามหน้าตาราง)", style={'textAlign': 'center'}),
     dcc.Graph(id='line-chart'),
@@ -91,18 +87,15 @@ app.layout = html.Div([
     dcc.Graph(id='pie-chart'),
 ])
 
-# Callback อัปเดตข้อมูลตารางตามมหาวิทยาลัยและช่วงราคา + pagination
+# Callback อัปเดตข้อมูลตารางตามช่วงราคา + pagination
 @app.callback(
     Output('course-table', 'data'),
-    Input('uni-dropdown', 'value'),
     Input('price-slider', 'value'),
     Input('course-table', 'page_current'),
     Input('course-table', 'page_size'),
 )
-def update_table(selected_unis, price_range, page_current, page_size):
+def update_table(price_range, page_current, page_size):
     filtered_df = df.copy()
-    if selected_unis:
-        filtered_df = filtered_df[filtered_df['มหาวิทยาลัย'].isin(selected_unis)]
     filtered_df = filtered_df[
         (filtered_df['ค่าใช้จ่าย'] >= price_range[0]) &
         (filtered_df['ค่าใช้จ่าย'] <= price_range[1])
@@ -117,22 +110,32 @@ def update_table(selected_unis, price_range, page_current, page_size):
 @app.callback(
     Output('stats-cards', 'children'),
     Output('bar-chart', 'figure'),
+    Output('top5-chart', 'figure'),
     Output('line-chart', 'figure'),
     Output('pie-chart', 'figure'),
-    Input('course-table', 'data')
+    Input('course-table', 'data'),
+    Input('price-slider', 'value')
 )
-def update_charts_and_stats(table_data):
+def update_charts_and_stats(table_data, price_range):
     if not table_data:
         no_data_fig = px.bar(title="ไม่มีข้อมูลในหน้านี้")
         no_stats = html.Div("ไม่มีข้อมูลในหน้านี้")
-        return no_stats, no_data_fig, no_data_fig, no_data_fig
+        return no_stats, no_data_fig, no_data_fig, no_data_fig, no_data_fig
 
     page_df = pd.DataFrame(table_data)
     
-    # คำนวณสถิติ
-    max_price = page_df['ค่าใช้จ่าย'].max()
-    min_price = page_df['ค่าใช้จ่าย'].min()
-    mean_price = page_df['ค่าใช้จ่าย'].mean()
+    # สำหรับ Top 5 และ Stats Cards - ใช้ข้อมูลทั้งหมดที่ผ่านการกรอง
+    filtered_df = df.copy()
+    filtered_df = filtered_df[
+        (filtered_df['ค่าใช้จ่าย'] >= price_range[0]) &
+        (filtered_df['ค่าใช้จ่าย'] <= price_range[1])
+    ]
+    top5_df = filtered_df.nlargest(5, 'ค่าใช้จ่าย')
+    
+    # คำนวณสถิติจากข้อมูลทั้งหมด (ที่ผ่านการกรอง)
+    max_price = filtered_df['ค่าใช้จ่าย'].max()
+    min_price = filtered_df['ค่าใช้จ่าย'].min()
+    mean_price = filtered_df['ค่าใช้จ่าย'].mean()
     
     # สร้าง stats cards
     stats_cards = html.Div([
@@ -161,14 +164,14 @@ def update_charts_and_stats(table_data):
         })
     ], style={'display': 'flex', 'justifyContent': 'center', 'flexWrap': 'wrap'})
 
-    # Bar chart
+    # Bar chart (ตามหน้าตาราง)
     bar_fig = px.bar(
         page_df,
         x='มหาวิทยาลัย_หลักสูตร',
         y='ค่าใช้จ่าย',
         color='มหาวิทยาลัย',
         labels={"ค่าใช้จ่าย": "ค่าเทอม (บาท/เทอม)", "ชื่อหลักสูตร": "หลักสูตร"},
-        title="ค่าเทอมของหลักสูตรในหน้านี้"
+        title=""
     )
     bar_fig.update_layout(
         xaxis_tickangle=45,
@@ -176,8 +179,26 @@ def update_charts_and_stats(table_data):
             'categoryorder': 'total descending',
             'showticklabels': False
         },
-        height=500,
-        margin=dict(t=50, b=50),
+        height=400,
+        margin=dict(t=20, b=50),
+    )
+
+    # Top 5 Bar chart (แนวนอน)
+    top5_fig = px.bar(
+        top5_df,
+        x='ค่าใช้จ่าย',
+        y='ชื่อหลักสูตร',
+        color='มหาวิทยาลัย',
+        orientation='h',
+        labels={"ค่าใช้จ่าย": "ค่าเทอม (บาท/เทอม)", "ชื่อหลักสูตร": "หลักสูตร"},
+        title=""
+    )
+    top5_fig.update_layout(
+        yaxis={'categoryorder': 'total ascending',
+        'showticklabels': False
+        },
+        height=400,
+        margin=dict(t=20, b=50, l=200),  # เพิ่ม left margin สำหรับชื่อหลักสูตร
     )
 
     # Line chart
@@ -196,15 +217,15 @@ def update_charts_and_stats(table_data):
         margin=dict(t=50, b=150),
     )
 
-    # Pie chart with pastel colors
+    # Pie chart with same colors as bar chart
     pie_data = page_df['มหาวิทยาลัย'].value_counts().reset_index()
     pie_data.columns = ['มหาวิทยาลัย', 'จำนวนหลักสูตร']
     pie_fig = px.pie(
         pie_data,
         values='จำนวนหลักสูตร',
         names='มหาวิทยาลัย',
-        title="สัดส่วนจำนวนหลักสูตรในแต่ละมหาวิทยาลัยในหน้านี้",
-        color_discrete_sequence=pastel_colors
+        title="สัดส่วนจำนวนหลักสูตรในแต่ละมหาวิทยาลัยในหน้านี้"
+        # ลบ color_discrete_sequence เพื่อใช้สีเดียวกับ bar chart
     )
     pie_fig.update_traces(
         textposition='inside', 
@@ -213,7 +234,7 @@ def update_charts_and_stats(table_data):
         insidetextorientation='radial'  # ข้อความแนวตามรัศมี
     )
 
-    return stats_cards, bar_fig, line_fig, pie_fig
+    return stats_cards, bar_fig, top5_fig, line_fig, pie_fig
 
 
 if __name__ == '__main__':
