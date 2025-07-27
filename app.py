@@ -202,19 +202,32 @@ def update_charts_and_stats(table_data, price_range):
     )
 
     # Line chart
-    line_data = page_df.groupby('มหาวิทยาลัย')['ค่าใช้จ่าย'].mean().reset_index()
+    # line_data = page_df.groupby('มหาวิทยาลัย')['ค่าใช้จ่าย'].mean().reset_index()
     line_fig = px.line(
-        line_data,
-        x='มหาวิทยาลัย',
+        page_df,
+        x=[i+1 for i in range(len(page_df))],  # เริ่มที่ 1 แทน 0
         y='ค่าใช้จ่าย',
         markers=True,
-        labels={"ค่าใช้จ่าย": "ค่าเทอมเฉลี่ย (บาท/เทอม)", "มหาวิทยาลัย": "มหาวิทยาลัย"},
-        title="ค่าเทอมเฉลี่ยรายมหาวิทยาลัยในหน้านี้"
+        labels={"x": "ลำดับในตาราง", "ค่าใช้จ่าย": "ค่าเทอม (บาท/เทอม)"},
+        title="ค่าเทอมแต่ละหลักสูตรในหน้านี้ (ตามลำดับในตาราง)",
+        hover_data=['ชื่อหลักสูตร', 'มหาวิทยาลัย']
     )
+    # ปรับแต่ง layout
     line_fig.update_layout(
-        xaxis_tickangle=45,
         height=500,
-        margin=dict(t=50, b=150),
+        margin=dict(t=50, b=100),
+        xaxis=dict(
+            title="ลำดับในตาราง",
+            tickmode='linear',
+            tick0=1,  # เริ่มที่ 1 แทน 0
+            dtick=1 if len(page_df) <= 10 else max(1, len(page_df)//10)
+        )
+    )
+
+    # เพิ่มสีให้แต่ละจุดตามมหาวิทยาลัย (ถ้าต้องการ)
+    line_fig.update_traces(
+        line=dict(color='blue', width=2),
+        marker=dict(size=8, color='red')
     )
 
     # Pie chart with same colors as bar chart
