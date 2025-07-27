@@ -8,6 +8,7 @@ import re
 async def scrape_tcas():
     keywords = ["วิศวกรรมคอมพิวเตอร์"]
     all_results = []
+    all_fields = set()
 
     os.makedirs("debug_html", exist_ok=True)
 
@@ -38,7 +39,6 @@ async def scrape_tcas():
                     await detail_page.goto(link, wait_until="networkidle")
                     await detail_page.wait_for_selector("main.site-body", timeout=15000)
 
-                    # คลิกแท็บ Overview ถ้าไม่ active
                     tab_overview = await detail_page.query_selector('a.r0[href="#overview"]')
                     if tab_overview:
                         class_attr = await tab_overview.get_attribute("class") or ""
@@ -54,7 +54,7 @@ async def scrape_tcas():
                     soup = BeautifulSoup(content, "html.parser")
 
                     main_site_body = soup.select_one("main.site-body")
-                    program_text = "ไม่พบข้อมูลหลักสูตรในแท็บ Overview"
+                    result_dict = {"คำค้นหา": keyword, "URL": link, "ชื่อหลักสูตร": ""}
 
                     if main_site_body:
                         div_t_box = main_site_body.select_one("div.t-box")
@@ -62,52 +62,42 @@ async def scrape_tcas():
                             ul_body = div_t_box.select_one("ul.body.t-program")
                             if ul_body:
                                 dls = ul_body.find_all("dl")
-                                result_lines = []
                                 for dl in dls:
                                     dts = dl.find_all("dt")
                                     dds = dl.find_all("dd")
                                     for dt, dd in zip(dts, dds):
-                                        dd_text = dd.get_text(strip=True)
-                                        # กรองเฉพาะ dd ที่มีตัวเลข
-                                        if re.search(r"\d", dd_text):
-                                            line = f"{dt.get_text(strip=True)}: {dd_text}"
-                                            result_lines.append(line)
-                                if result_lines:
-                                    program_text = "\n".join(result_lines)
-                                else:
-                                    program_text = "ไม่พบ <dd> ที่มีตัวเลขในหลักสูตร"
-                            else:
-                                program_text = "ไม่พบ ul.body.t-program"
-                        else:
-                            program_text = "ไม่พบ div.t-box"
-                    else:
-                        program_text = "ไม่พบ main.site-body"
+                                        key = dt.get_text(strip=True)
+                                        value = dd.get_text(strip=True)
+                                        if re.search(r"\d", value):  # มีตัวเลข
+                                            result_dict[key] = value
+                                            all_fields.add(key)
 
-                    print(f"คำค้นหา: {keyword} | URL: {link}\nข้อมูลหลักสูตร:\n{program_text}\n{'-'*80}")
+                        title_el = main_site_body.select_one("h2")
+                        if title_el:
+                            result_dict["ชื่อหลักสูตร"] = title_el.get_text(strip=True)
 
-                    all_results.append({
-                        "คำค้นหา": keyword,
-                        "URL": link,
-                        "ข้อมูลหลักสูตร": program_text
-                    })
+                    all_results.append(result_dict)
 
                 except Exception as e:
                     print(f"{keyword} → {link} → ❌ Error: {e}")
                     all_results.append({
                         "คำค้นหา": keyword,
                         "URL": link,
-                        "ข้อมูลหลักสูตร": "Error เก็บข้อมูลไม่ได้"
+                        "ชื่อหลักสูตร": "Error",
+                        "สถานะ": "Error เก็บข้อมูลไม่ได้"
                     })
 
                 await detail_page.close()
 
         await browser.close()
 
+    # บันทึกผลลัพธ์ลง CSV
+    fieldnames = ["คำค้นหา", "URL", "ชื่อหลักสูตร"] + sorted(all_fields)
     with open("tcas_programs.csv", "w", newline="", encoding="utf-8-sig") as f:
-        fieldnames = ["คำค้นหา", "URL", "ข้อมูลหลักสูตร"]
         writer = csv.DictWriter(f, fieldnames=fieldnames)
         writer.writeheader()
-        writer.writerows(all_results)
+        for row in all_results:
+            writer.writerow(row)
 
 if __name__ == "__main__":
     asyncio.run(scrape_tcas())
