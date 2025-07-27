@@ -1,0 +1,28 @@
+import pandas as pd
+
+# โหลดไฟล์ CSV
+df = pd.read_csv("filtered_tcas_cleaned_fillbyhand.csv")
+
+# ดึงเฉพาะบางคอลัมน์
+selected_columns = ['มหาวิทยาลัย', 'ค่าใช้จ่าย', 'ชื่อหลักสูตร', 'ชื่อหลักสูตรภาษาอังกฤษ']
+new_df = df[selected_columns].copy()
+
+# แปลงค่าใช้จ่ายให้เป็นตัวเลข (ลบ , และแปลงเป็น float)
+new_df['ค่าใช้จ่าย'] = (
+    new_df['ค่าใช้จ่าย']
+    .astype(str)                          # แปลงให้เป็น str ก่อน
+    .str.replace(',', '', regex=False)   # ลบ comma
+    .str.extract(r'(\d+(?:\.\d+)?)')     # ดึงเฉพาะตัวเลข (รวมทศนิยมถ้ามี)
+    .astype(float)                       # แปลงเป็น float
+)
+
+# หากค่าใช้จ่าย > 90000 ให้หาร 8
+new_df.loc[new_df['ค่าใช้จ่าย'] > 90000, 'ค่าใช้จ่าย'] /= 8
+
+# ปัดเศษและแปลงเป็น Int64 (รองรับ NaN)
+new_df['ค่าใช้จ่าย'] = new_df['ค่าใช้จ่าย'].round().astype('Int64')
+
+# บันทึกไฟล์ใหม่
+new_df.to_csv("final_filtered_tcas_cleaned.csv", index=False, encoding='utf-8-sig')
+
+print("บันทึกไฟล์ final_filtered_tcas_cleaned.csv เรียบร้อยแล้ว")
